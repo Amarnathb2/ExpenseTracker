@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>View Expenses</title>
+<style>
+body { font-family: Arial; margin:20px; text-align:center; }
+table { width:90%; margin:auto; border-collapse: collapse; margin-top:20px; }
+th, td { border:1px solid #cbd5e0; padding:8px; text-align:center; }
+th { background:#2b6cb0; color:white; }
+button { padding:5px 10px; border-radius:5px; cursor:pointer; border:none; background:#2b6cb0; color:white; }
+button:hover { background:#2c5282; }
+h3 { margin-top:40px; }
+.total { font-weight:bold; margin-top:20px; }
+</style>
+</head>
+<body>
+
+<h2>Expenses</h2>
+
+<h3>EMI Expenses</h3>
+<div id="emiContainer"></div>
+
+<h3>Other Expenses</h3>
+<div id="otherContainer"></div>
+
+<div class="total" id="totalSpent"></div>
+
+<button onclick="generateReport()">📄 Generate Report</button>
+
+<script src="app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script>
+addBackButton(); // Back to Home
+
+// ---------------- Display Expenses ----------------
+function displayExpenses() {
+    const emiContainer = document.getElementById('emiContainer');
+    const otherContainer = document.getElementById('otherContainer');
+    let total = 0;
+
+    // Filter EMI & Other
+    const emiExpenses = expensesData.expenses.filter(e => e.type==='EMI');
+    const otherExpenses = expensesData.expenses.filter(e => e.type!=='EMI');
+
+    // ---------------- EMI Table ----------------
+    if(emiExpenses.length===0){
+        emiContainer.innerHTML = "<p>No EMI expenses yet.</p>";
+    } else {
+        let html = `<table>
+            <tr>
+                <th>EMI Type</th>
+                <th>Item Name</th>
+                <th>Amount</th>
+                <th>Paid</th>
+                <th>Remaining</th>
+                <th>Date</th>
+                <th>Action</th>
+            </tr>`;
+        emiExpenses.forEach((e,index)=>{
+            html += `<tr>
+                <td>${e.emiType}</td>
+                <td>${e.itemName || '-'}</td>
+                <td>${e.amount}</td>
+                <td>${e.paidAmount}</td>
+                <td>${e.remainingAmount}</td>
+                <td>${new Date(e.date).toLocaleString()}</td>
+                <td><button onclick="editExpense(${expensesData.expenses.indexOf(e)})">Edit</button></td>
+            </tr>`;
+            total += e.amount;
+        });
+        html += `</table>`;
+        emiContainer.innerHTML = html;
+    }
+
+    // ---------------- Other Table ----------------
+    if(otherExpenses.length===0){
+        otherContainer.innerHTML = "<p>No other expenses yet.</p>";
+    } else {
+        let html = `<table>
+            <tr>
+                <th>Type</th>
+                <th>Item Name</th>
+                <th>Amount</th>
+                <th>Date</th>
+                <th>Action</th>
+            </tr>`;
+        otherExpenses.forEach((e,index)=>{
+            html += `<tr>
+                <td>${e.type}</td>
+                <td>${e.itemName || '-'}</td>
+                <td>${e.amount}</td>
+                <td>${new Date(e.date).toLocaleString()}</td>
+                <td><button onclick="editExpense(${expensesData.expenses.indexOf(e)})">Edit</button></td>
+            </tr>`;
+            total += e.amount;
+        });
+        html += `</table>`;
+        otherContainer.innerHTML = html;
+    }
+
+    // Show total
+    document.getElementById('totalSpent').textContent = `💰 Total Spent: ${total}`;
+}
+
+displayExpenses();
+
+// ---------------- Edit Expense ----------------
+function editExpense(index){
+    const expense = expensesData.expenses[index];
+    const newAmount = parseFloat(prompt(`Edit amount for ${expense.type}${expense.emiType ? ' - ' + expense.emiType : ''}:`, expense.amount));
+    if(isNaN(newAmount)) return alert('Invalid amount');
+
+    if(expense.type==='EMI'){
+        const emi = expensesData.emiTypes.find(e=>e.name===expense.emiType);
+        if(!emi) return alert('EMI type not found!');
+        const diff = newAmount - expense.amount;
+        emi.paidAmount += diff;
+        expense.paidAmount += diff;
+        expense.remainingAmount = emi.totalAmount - emi.paidAmount;
+    }
+
+    expense.amount = newAmount;
+    saveData();
+    displayExpenses();
+}
+
+// ---------------- Generate Excel Report ----------------
+function generateReport() {
+    if(expensesData.expenses.length === 0) return alert('No expenses to report.');
+
+    const reportData = expensesData.expenses.map(e => {
+        return {
+            "Type": e.type,
+            "Item Name": e.itemName || '-',
+            "EMI Type": e.emiType || '-',
+            "Amount": e.amount,
+            "Paid": e.paidAmount || '-',
+            "Remaining": e.remainingAmount || '-',
+            "Date": new Date(e.date).toLocaleDateString()
+        };
+    });
+
+    const ws = XLSX.utils.json_to_sheet(reportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Expenses Report");
+    XLSX.writeFile(wb, "Expenses_Report.xlsx");
+}
+</script>
+</body>
+</html>

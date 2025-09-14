@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Monthly Report</title>
+<style>
+body { font-family: Arial; margin:20px; text-align:center; }
+button { padding:10px 15px; border:none; background:#2b6cb0; color:white; cursor:pointer; border-radius:6px; margin:5px; }
+button:hover { background:#2c5282; }
+</style>
+</head>
+<body>
+
+<h2>Generate Monthly Expense Report</h2>
+<button onclick="generateReport()">Download Excel</button>
+
+<script src="app.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+<script>
+addBackButton();
+
+function generateReport() {
+    if(expensesData.expenses.length === 0) return alert('No expenses to report.');
+
+    // Group by month-year
+    const reportData = expensesData.expenses.map(e => {
+        const d = new Date(e.date);
+        return {
+            "Month-Year": `${d.getMonth()+1}-${d.getFullYear()}`,
+            "Type": e.type,
+            "Item Name": e.itemName || '-',
+            "EMI Type": e.emiType || '-',
+            "Amount": e.amount,
+            "Paid": e.paidAmount || '-',
+            "Remaining": e.remainingAmount || '-',
+            "Date": d.toLocaleDateString()
+        };
+    });
+
+    // Convert to worksheet
+    const ws = XLSX.utils.json_to_sheet(reportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Monthly Report");
+
+    // Generate Excel file
+    XLSX.writeFile(wb, "Expense_Report.xlsx");
+}
+</script>
+
+</body>
+</html>
