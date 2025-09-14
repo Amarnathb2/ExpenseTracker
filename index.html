@@ -33,6 +33,7 @@ h2,h3 { margin-top:20px; }
 </div>
 
 <div id="dashboard" style="display:none;">
+
   <!-- Add Expense -->
   <h3>Add Expense</h3>
   <form id="expenseForm">
@@ -44,6 +45,7 @@ h2,h3 { margin-top:20px; }
       <option value="EMI">EMI</option>
       <option value="Other">Other</option>
     </select><br>
+
     <div id="emiDiv" style="display:none;">
       <label>EMI Type:</label>
       <select id="emiType"></select><br>
@@ -53,6 +55,7 @@ h2,h3 { margin-top:20px; }
       <input type="number" id="emiPaid" placeholder="Paid amount"><br>
       <button type="button" onclick="addNewEMI()">Add/Update EMI</button><br>
     </div>
+
     <label>Item Name:</label>
     <input type="text" id="itemName"><br>
     <label>Amount:</label>
@@ -80,7 +83,7 @@ let accessToken = null;
 function handleCredentialResponse(response) {
     document.getElementById('signinDiv').style.display='none';
     document.getElementById('dashboard').style.display='block';
-    accessToken = response.credential; // JWT, can decode email if needed
+    accessToken = response.credential;
     loadFromDrive();
 }
 
@@ -176,9 +179,7 @@ function displayExpenses(){
 }
 
 // ---------------- Save/Load Data Locally ----------------
-function saveData(){
-    localStorage.setItem('expensesData', JSON.stringify(expensesData));
-}
+function saveData(){ localStorage.setItem('expensesData', JSON.stringify(expensesData)); }
 
 // ---------------- Generate Excel ----------------
 function generateReport(){
@@ -186,36 +187,54 @@ function generateReport(){
     const ws = XLSX.utils.json_to_sheet(expensesData.expenses);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Expenses");
-    XLSX.writeFile(wb,"Expenses_Report.xlsx");
+    XLSX.writeFile(wb,"ExpenseReport.xlsx");
 }
 
-// ---------------- Google Drive Save ----------------
-function saveToDrive(){
-    if(!accessToken) return alert('Sign in first!');
-    const fileMetadata = {name:'ExpenseTrackerData.json', mimeType:'application/json'};
-    const blob = new Blob([JSON.stringify(expensesData)], {type:'application/json'});
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(fileMetadata)], {type:'application/json'}));
-    form.append('file', blob);
-
-    fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-        method:'POST',
-        headers: {'Authorization':'Bearer '+accessToken},
-        body: form
-    }).then(res=>res.json()).then(data=>alert('Saved to Drive!')).catch(e=>console.error(e));
-}
-
-// ---------------- Load From Drive ----------------
+// ---------------- Google Drive ----------------
 function loadFromDrive(){
     if(!accessToken) return;
-    // Optional: implement search and fetch the JSON file from Drive
-    const localData = localStorage.getItem('expensesData');
-    if(localData) expensesData = JSON.parse(localData);
-    displayExpenses();
+    fetch('https://www.googleapis.com/drive/v3/files?q=name="ExpenseTrackerData.json"&fields=files(id,name)', {
+        headers:{'Authorization':'Bearer '+accessToken}
+    }).then(res=>res.json())
+    .then(data=>{
+        if(data.files && data.files.length>0){
+            const fileId = data.files[0].id;
+            fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`,{
+                headers:{'Authorization':'Bearer '+accessToken}
+            }).then(r=>r.json()).then(fileData=>{
+                expensesData = fileData;
+                saveData();
+                displayExpenses();
+            });
+        }
+    });
 }
 
-// ---------------- Initialize ----------------
-document.addEventListener('DOMContentLoaded', ()=>{
+function saveToDrive(){
+    if(!accessToken) return alert('Sign in first!');
+    fetch('https://www.googleapis.com/drive/v3/files?q=name="ExpenseTrackerData.json"&fields=files(id,name)',{
+        headers:{'Authorization':'Bearer '+accessToken}
+    }).then(res=>res.json()).then(data=>{
+        const metadata = {name:'ExpenseTrackerData.json', mimeType:'application/json'};
+        const blob = new Blob([JSON.stringify(expensesData)], {type:'application/json'});
+        const form = new FormData();
+        form.append('metadata', new Blob([JSON.stringify(metadata)],{type:'application/json'}));
+        form.append('file', blob);
+
+        let url='https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart';
+        let method='POST';
+        if(data.files && data.files.length>0){
+            url=`https://www.googleapis.com/upload/drive/v3/files/${data.files[0].id}?uploadType=multipart`;
+            method='PATCH';
+        }
+
+        fetch(url,{method, headers:{'Authorization':'Bearer '+accessToken}, body:form})
+        .then(r=>r.json()).then(r=>alert('Saved to Google Drive!'));
+    });
+}
+
+// ---------------- Load localStorage ----------------
+window.addEventListener('load',()=>{
     const localData = localStorage.getItem('expensesData');
     if(localData) { expensesData = JSON.parse(localData); displayExpenses(); }
 });
