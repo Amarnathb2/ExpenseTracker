@@ -59,15 +59,17 @@ th { background:#2b6cb0; color:white; }
 
 <script src="https://apis.google.com/js/api.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
 <script>
+// ---------------- Config ----------------
 const CLIENT_ID = '257055116652-3fidtne77h0ga05efu2e85q1r1pn1qoa.apps.googleusercontent.com';
-const API_KEY = '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';
+const API_KEY = 'AIzaSyBgaRAcjeS2xwuM-AZve28NHaOC_Iy_tXo';
 const SCOPES = 'https://www.googleapis.com/auth/drive.file';
 
 let accessToken = null;
 let expensesData = { expenses: [], emiTypes: [] };
 
-// ------------------- Google OAuth -------------------
+// ---------------- Google OAuth ----------------
 function handleSignIn(){
   gapi.load('client:auth2', initClient);
 }
@@ -79,7 +81,7 @@ function initClient(){
     scope: SCOPES,
     discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"]
   }).then(()=>{
-    gapi.auth2.getAuthInstance().signIn().then(user=>{
+    gapi.auth2.getAuthInstance().signIn().then(()=>{
       accessToken = gapi.auth2.getAuthInstance().currentUser.get().getAuthResponse().access_token;
       document.getElementById('signinDiv').style.display='none';
       document.getElementById('dashboard').style.display='block';
@@ -88,7 +90,7 @@ function initClient(){
   });
 }
 
-// ------------------- Add Expense -------------------
+// ---------------- Expense Form ----------------
 const expenseType = document.getElementById('expenseType');
 const emiDiv = document.getElementById('emiDiv');
 const emiSelect = document.getElementById('emiType');
@@ -130,7 +132,7 @@ document.getElementById('expenseForm').addEventListener('submit', e=>{
   emiDiv.style.display='none';
 });
 
-// ------------------- Display Expenses -------------------
+// ---------------- Display Expenses ----------------
 function displayExpenses(){
   const container = document.getElementById('expensesContainer');
   if(expensesData.expenses.length===0){
@@ -158,7 +160,7 @@ function displayExpenses(){
   document.getElementById('totalSpent').textContent = total;
 }
 
-// ------------------- Save/Load localStorage -------------------
+// ---------------- LocalStorage ----------------
 function saveData(){ localStorage.setItem('expensesData', JSON.stringify(expensesData)); }
 
 window.addEventListener('load',()=>{
@@ -166,7 +168,7 @@ window.addEventListener('load',()=>{
   if(localData){ expensesData = JSON.parse(localData); displayExpenses(); populateEMItypes(); }
 });
 
-// ------------------- Generate Excel -------------------
+// ---------------- Generate Excel ----------------
 function generateReport(){
   const wb = XLSX.utils.book_new();
   const wsData = [['Item','Type','EMI Type','Paid','Remaining','Date']];
@@ -178,7 +180,7 @@ function generateReport(){
   XLSX.writeFile(wb,"ExpenseReport.xlsx");
 }
 
-// ------------------- Google Drive -------------------
+// ---------------- Google Drive ----------------
 function loadFromDrive(){
   if(!accessToken) return;
   gapi.client.drive.files.list({
@@ -199,15 +201,27 @@ function loadFromDrive(){
 
 function saveToDrive(){
   if(!accessToken) return alert('Sign in first!');
-  gapi.client.request({
-    path: '/upload/drive/v3/files',
-    method: 'POST',
-    params: {uploadType:'media'},
-    body: JSON.stringify(expensesData),
-    headers:{'Content-Type':'application/json'}
-  }).then(()=>alert('Saved to Drive!'), err=>console.error(err));
+  gapi.client.drive.files.list({
+    q: 'name="ExpenseTrackerData.json"',
+    fields: "files(id,name)"
+  }).then(res=>{
+    let fileId = res.result.files.length>0 ? res.result.files[0].id : null;
+    const request = fileId ? gapi.client.request({
+      path: '/upload/drive/v3/files/'+fileId,
+      method: 'PATCH',
+      params: {uploadType:'media'},
+      body: JSON.stringify(expensesData),
+      headers:{'Content-Type':'application/json'}
+    }) : gapi.client.request({
+      path: '/upload/drive/v3/files',
+      method: 'POST',
+      params: {uploadType:'media'},
+      body: JSON.stringify(expensesData),
+      headers:{'Content-Type':'application/json'}
+    });
+    request.then(()=>alert('Saved to Drive!'), err=>console.error(err));
+  });
 }
-
 </script>
 </body>
 </html>
