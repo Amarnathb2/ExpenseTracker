@@ -6,37 +6,34 @@
 <title>Expense Tracker</title>
 <style>
 body { font-family: Arial; margin:20px; text-align:center; }
-form, table { margin:20px auto; max-width:90%; border-collapse: collapse; }
-input, select, button { padding:8px; border-radius:6px; border:1px solid #cbd5e0; margin:5px; }
+form, table { max-width:600px; margin: 0 auto 20px; }
+input, select, button { padding:6px; margin:4px; border-radius:5px; border:1px solid #ccc; }
 button { background:#2b6cb0; color:white; cursor:pointer; }
 button:hover { background:#2c5282; }
-th, td { border:1px solid #cbd5e0; padding:8px; text-align:center; }
+table { width:100%; border-collapse: collapse; margin-top:20px; }
+th, td { border:1px solid #ccc; padding:6px; text-align:center; }
 th { background:#2b6cb0; color:white; }
 </style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
 </head>
 <body>
 
-<h2>Expense Tracker</h2>
+<h1>Expense Tracker</h1>
 
-<!-- Sign-in Button -->
-<div id="signinDiv">
-  <div id="g_id_onload"
-       data-client_id="257055116652-3fidtne77h0ga05efu2e85q1r1pn1qoa.apps.googleusercontent.com"
-       data-ux_mode="popup"
-       data-callback="handleCredentialResponse"
-       data-auto_prompt="false">
-  </div>
-  <div class="g_id_signin" data-type="standard"></div>
+<div id="g_id_onload"
+     data-client_id="257055116652-3fidtne77h0ga05efu2e85q1r1pn1qoa.apps.googleusercontent.com"
+     data-callback="handleCredentialResponse"
+     data-ux_mode="popup"
+     data-scope="https://www.googleapis.com/auth/drive.file"
+     data-auto_prompt="false">
 </div>
+<div id="signinButton"></div>
 
-<!-- Dashboard -->
-<div id="dashboard" style="display:none;">
-  <h3>Add Expense</h3>
+<div id="tracker" style="display:none;">
+  <h2>Add Expense</h2>
   <form id="expenseForm">
-    <label>Item:</label>
-    <input type="text" id="itemName" required>
-
-    <label>Expense Type:</label>
+    <input type="text" id="item" placeholder="Item Name" required>
     <select id="expenseType">
       <option value="Grocery">Grocery</option>
       <option value="Food">Food</option>
@@ -46,163 +43,128 @@ th { background:#2b6cb0; color:white; }
     </select>
 
     <div id="emiDiv" style="display:none;">
-      <label>EMI Type:</label>
-      <select id="emiType"></select>
-      <input type="text" id="newEMIType" placeholder="Configure new EMI">
-      <input type="number" id="totalEMI" placeholder="Total EMI Amount">
+      <input type="text" id="emiType" placeholder="EMI Type">
+      <input type="number" id="emiTotal" placeholder="Total Amount">
+      <input type="number" id="emiPaid" placeholder="Already Paid">
     </div>
 
-    <label>Amount:</label>
-    <input type="number" id="amount" required>
+    <input type="number" id="amount" placeholder="Amount" required>
     <button type="submit">Add Expense</button>
   </form>
 
-  <h3>Expenses</h3>
-  <div id="expensesContainer"></div>
+  <h2>Other Expenses</h2>
+  <div id="otherTable"></div>
+
+  <h2>EMI Expenses</h2>
+  <div id="emiTable"></div>
 
   <h3>Total Spent: <span id="totalSpent">0</span></h3>
-  <button onclick="generateReport()">Generate Excel Report</button>
-  <button onclick="saveToDrive()">Save to Google Drive</button>
+  <button onclick="generateExcel()">Generate Excel Report</button>
 </div>
 
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-
 <script>
-let accessToken = null;
+let accessToken = '';
 let expensesData = { expenses: [], emiTypes: [] };
 
-// ---------------- Google Identity callback ----------------
 function handleCredentialResponse(response){
-  accessToken = response.credential; // JWT token
-  document.getElementById('signinDiv').style.display='none';
-  document.getElementById('dashboard').style.display='block';
-  loadFromDrive();
+    accessToken = response.credential; // token for Drive
+    document.getElementById('tracker').style.display='block';
+    document.getElementById('signinButton').style.display='none';
+    gapi.load('client', initClient);
 }
 
-// ---------------- Expense Form ----------------
+async function initClient(){
+    await gapi.client.init({ apiKey: 'AIzaSyBgaRAcjeS2xwuM-AZve28NHaOC_Iy_tXo', discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"] });
+    gapi.client.setToken({ access_token: accessToken });
+    await loadFromDrive();
+}
+
+// ----------- Drive Storage ------------
+async function loadFromDrive(){
+    try{
+        const res = await gapi.client.drive.files.list({
+            q: 'name="ExpenseTrackerData.json"',
+            fields: 'files(id,name)'
+        });
+        if(res.result.files.length){
+            const fileId = res.result.files[0].id;
+            const contentRes = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
+            expensesData = contentRes.result;
+        } else {
+            await saveToDrive(); // create new file
+        }
+        displayExpenses();
+    } catch(err){ console.error(err); }
+}
+
+async function saveToDrive(){
+    const metadata = { name: 'ExpenseTrackerData.json', mimeType: 'application/json' };
+    const blob = new Blob([JSON.stringify(expensesData)], { type: 'application/json' });
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+    form.append('file', blob);
+
+    await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + accessToken },
+        body: form
+    });
+}
+
+// ----------- Add Expense ------------
 const expenseType = document.getElementById('expenseType');
 const emiDiv = document.getElementById('emiDiv');
-const emiSelect = document.getElementById('emiType');
+expenseType.addEventListener('change', e=>{ emiDiv.style.display = e.target.value==='EMI' ? 'block':'none'; });
 
-expenseType.addEventListener('change', e=>{
-  emiDiv.style.display = e.target.value==='EMI' ? 'block':'none';
-  populateEMItypes();
-});
-
-function populateEMItypes(){
-  emiSelect.innerHTML = '';
-  expensesData.emiTypes.forEach(e=>{
-    const opt = document.createElement('option');
-    opt.value=e.name; opt.textContent=e.name;
-    emiSelect.appendChild(opt);
-  });
-}
-
-document.getElementById('expenseForm').addEventListener('submit', e=>{
-  e.preventDefault();
-  const type = expenseType.value;
-  const itemName = document.getElementById('itemName').value;
-  const amount = parseFloat(document.getElementById('amount').value);
-  let emiType = null;
-
-  if(type==='EMI'){
-    emiType = document.getElementById('newEMIType').value || emiSelect.value;
-    const totalAmount = parseFloat(document.getElementById('totalEMI').value) || amount;
-    let emi = expensesData.emiTypes.find(e=>e.name===emiType);
-    if(!emi){
-      expensesData.emiTypes.push({name: emiType, totalAmount, paidAmount: 0});
+document.getElementById('expenseForm').addEventListener('submit', async e=>{
+    e.preventDefault();
+    const type = expenseType.value;
+    const item = document.getElementById('item').value;
+    const amount = parseFloat(document.getElementById('amount').value);
+    let emiType = null;
+    if(type==='EMI'){
+        emiType = document.getElementById('emiType').value;
+        const total = parseFloat(document.getElementById('emiTotal').value);
+        const paid = parseFloat(document.getElementById('emiPaid').value);
+        let emi = expensesData.emiTypes.find(e=>e.name===emiType);
+        if(!emi){
+            emi = { name: emiType, totalAmount: total, paidAmount: paid };
+            expensesData.emiTypes.push(emi);
+        }
     }
-  }
-
-  expensesData.expenses.push({
-    type, itemName, amount,
-    emiType,
-    date: new Date(),
-    paidAmount: type==='EMI'?amount:0,
-    remainingAmount: type==='EMI'?amount:0
-  });
-  saveData();
-  displayExpenses();
-  document.getElementById('expenseForm').reset();
-  emiDiv.style.display='none';
+    expensesData.expenses.push({ type, item, amount, emiType, date: new Date().toISOString() });
+    await saveToDrive();
+    displayExpenses();
 });
 
-// ---------------- Display Expenses ----------------
+// ----------- Display Tables ------------
 function displayExpenses(){
-  const container = document.getElementById('expensesContainer');
-  if(expensesData.expenses.length===0){
-      container.innerHTML="<p>No expenses yet.</p>";
-      document.getElementById('totalSpent').textContent=0;
-      return;
-  }
+    const other = expensesData.expenses.filter(e=>e.type!=='EMI');
+    const emi = expensesData.expenses.filter(e=>e.type==='EMI');
+    let total = 0;
 
-  let total=0;
-  let html='<h4>Other Expenses</h4><table><tr><th>Item</th><th>Type</th><th>Amount</th><th>Date</th></tr>';
-  expensesData.expenses.filter(e=>e.type!=='EMI').forEach(e=>{
-      html+=`<tr><td>${e.itemName}</td><td>${e.type}</td><td>${e.amount}</td><td>${new Date(e.date).toLocaleString()}</td></tr>`;
-      total+=e.amount;
-  });
-  html+='</table>';
+    // Other expenses
+    let html = '<table><tr><th>Item</th><th>Type</th><th>Amount</th><th>Date</th></tr>';
+    other.forEach(e=>{ html += `<tr><td>${e.item}</td><td>${e.type}</td><td>${e.amount}</td><td>${new Date(e.date).toLocaleDateString()}</td></tr>`; total+=e.amount; });
+    html+='</table>'; document.getElementById('otherTable').innerHTML=html;
 
-  html+='<h4>EMI Expenses</h4><table><tr><th>Item</th><th>EMI Type</th><th>Paid</th><th>Remaining</th><th>Date</th></tr>';
-  expensesData.expenses.filter(e=>e.type==='EMI').forEach(e=>{
-      html+=`<tr><td>${e.itemName}</td><td>${e.emiType}</td><td>${e.paidAmount}</td><td>${e.remainingAmount}</td><td>${new Date(e.date).toLocaleString()}</td></tr>`;
-      total+=e.paidAmount;
-  });
-  html+='</table>';
+    // EMI expenses
+    html = '<table><tr><th>Item</th><th>EMI Type</th><th>Amount</th><th>Date</th></tr>';
+    emi.forEach(e=>{ html += `<tr><td>${e.item}</td><td>${e.emiType}</td><td>${e.amount}</td><td>${new Date(e.date).toLocaleDateString()}</td></tr>`; total+=e.amount; });
+    html+='</table>'; document.getElementById('emiTable').innerHTML=html;
 
-  container.innerHTML = html;
-  document.getElementById('totalSpent').textContent = total;
+    document.getElementById('totalSpent').innerText = total;
 }
 
-// ---------------- LocalStorage ----------------
-function saveData(){ localStorage.setItem('expensesData',JSON.stringify(expensesData)); }
-window.addEventListener('load',()=>{
-  const localData = localStorage.getItem('expensesData');
-  if(localData){ expensesData=JSON.parse(localData); displayExpenses(); populateEMItypes(); }
-});
-
-// ---------------- Excel Report ----------------
-function generateReport(){
-  const wb=XLSX.utils.book_new();
-  const wsData=[['Item','Type','EMI Type','Paid','Remaining','Date']];
-  expensesData.expenses.forEach(e=>{ wsData.push([e.itemName,e.type,e.emiType||'',e.paidAmount||'',e.remainingAmount||'',new Date(e.date).toLocaleString()]); });
-  const ws=XLSX.utils.aoa_to_sheet(wsData);
-  XLSX.utils.book_append_sheet(wb,ws,"Expenses");
-  XLSX.writeFile(wb,"ExpenseReport.xlsx");
-}
-
-// ---------------- Google Drive ----------------
-function loadFromDrive(){
-  if(!accessToken) return;
-  fetch('https://www.googleapis.com/drive/v3/files?q=name="ExpenseTrackerData.json"&fields=files(id,name)', {
-    headers: { Authorization: 'Bearer ' + accessToken }
-  }).then(r=>r.json()).then(res=>{
-    if(res.files && res.files.length>0){
-      const fileId = res.files[0].id;
-      fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
-        headers: { Authorization: 'Bearer ' + accessToken }
-      }).then(r=>r.json()).then(data=>{
-        expensesData = data; saveData(); displayExpenses(); populateEMItypes();
-      });
-    }
-  });
-}
-
-function saveToDrive(){
-  if(!accessToken) return alert('Not signed in');
-  const metadata = {name:"ExpenseTrackerData.json", mimeType:"application/json"};
-  const form = new FormData();
-  form.append("metadata", new Blob([JSON.stringify(metadata)], {type:"application/json"}));
-  form.append("file", new Blob([JSON.stringify(expensesData)], {type:"application/json"}));
-  fetch("https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart", {
-    method:"POST",
-    headers:{Authorization:"Bearer "+accessToken},
-    body:form
-  }).then(r=>r.ok?alert("Saved to Drive!"):alert("Failed!"));
+// ----------- Excel Report ------------
+function generateExcel(){
+    let csv = 'Item,Type,EMI Type,Amount,Date\n';
+    expensesData.expenses.forEach(e=>{ csv+=`${e.item},${e.type},${e.emiType||''},${e.amount},${new Date(e.date).toLocaleDateString()}\n`; });
+    const a = document.createElement('a');
+    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
+    a.download = 'ExpenseReport.csv';
+    a.click();
 }
 </script>
-
 </body>
 </html>
