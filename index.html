@@ -1,27 +1,225 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Expense Tracker</title>
-  <style>
-    body { font-family: Arial; margin:20px; text-align:center; }
-    h1 { color:#2b6cb0; }
-    .tiles { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-top:30px; }
-    .tile { padding:20px; background:#edf2f7; border-radius:12px; cursor:pointer; transition:0.3s; }
-    .tile:hover { background:#cbd5e0; }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Expense Tracker</title>
+<style>
+body { font-family: Arial; margin:20px; text-align:center; }
+form, table { margin:auto; max-width:500px; }
+input, select, button { padding:8px; margin:5px; border-radius:5px; border:1px solid #cbd5e0; }
+button { background:#2b6cb0; color:white; cursor:pointer; }
+button:hover { background:#2c5282; }
+table { width:100%; border-collapse: collapse; margin-top:20px; }
+th, td { border:1px solid #cbd5e0; padding:8px; text-align:center; }
+th { background:#2b6cb0; color:white; }
+h2,h3 { margin-top:20px; }
+.total { font-weight:bold; margin-top:20px; }
+</style>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://apis.google.com/js/api.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 </head>
 <body>
-  <h1>Expense Tracker</h1>
-  <div class="tiles">
-  <div class="tile" onclick="window.location='add-expense.html'">➕ Add Expense</div>
-  <div class="tile" onclick="window.location='view-expense.html'">📊 View Expenses</div>
-  <div class="tile" onclick="displayPendingEMI('pendingEMI')">💰 Pending EMI</div>
-</div>
-<div id="pendingEMI"></div>
 
-<script src="app.js"></script>
+<h2>Expense Tracker</h2>
+<div id="signinDiv">
+  <div id="g_id_onload"
+       data-client_id="YOUR_CLIENT_ID.apps.googleusercontent.com"
+       data-callback="handleCredentialResponse"
+       data-auto_prompt="false">
+  </div>
+  <div class="g_id_signin" data-type="standard"></div>
+</div>
+
+<div id="dashboard" style="display:none;">
+  <!-- Add Expense -->
+  <h3>Add Expense</h3>
+  <form id="expenseForm">
+    <label>Type:</label>
+    <select id="expenseType">
+      <option value="Grocery">Grocery</option>
+      <option value="Food">Food</option>
+      <option value="Travel">Travel</option>
+      <option value="EMI">EMI</option>
+      <option value="Other">Other</option>
+    </select><br>
+    <div id="emiDiv" style="display:none;">
+      <label>EMI Type:</label>
+      <select id="emiType"></select><br>
+      <label>Total Taken:</label>
+      <input type="number" id="emiTotal" placeholder="Total amount"><br>
+      <label>Already Paid:</label>
+      <input type="number" id="emiPaid" placeholder="Paid amount"><br>
+      <button type="button" onclick="addNewEMI()">Add/Update EMI</button><br>
+    </div>
+    <label>Item Name:</label>
+    <input type="text" id="itemName"><br>
+    <label>Amount:</label>
+    <input type="number" id="amount" required><br>
+    <button type="submit">Add Expense</button>
+  </form>
+
+  <!-- Expense Tables -->
+  <h3>EMI Expenses</h3>
+  <div id="emiContainer"></div>
+
+  <h3>Other Expenses</h3>
+  <div id="otherContainer"></div>
+
+  <div class="total" id="totalSpent"></div>
+  <button onclick="generateReport()">📄 Generate Excel Report</button>
+  <button onclick="saveToDrive()">💾 Save to Google Drive</button>
+</div>
+
+<script>
+let expensesData = { expenses: [], emiTypes: [] };
+let accessToken = null;
+
+// ---------------- Google Sign-In ----------------
+function handleCredentialResponse(response) {
+    document.getElementById('signinDiv').style.display='none';
+    document.getElementById('dashboard').style.display='block';
+    accessToken = response.credential; // JWT, can decode email if needed
+    loadFromDrive();
+}
+
+// ---------------- Expense Type Change ----------------
+document.getElementById('expenseType').addEventListener('change', e => {
+    const emiDiv = document.getElementById('emiDiv');
+    emiDiv.style.display = e.target.value==='EMI' ? 'block':'none';
+    populateEMITypes();
+});
+
+function populateEMITypes() {
+    const emiSelect = document.getElementById('emiType');
+    emiSelect.innerHTML='';
+    expensesData.emiTypes.forEach(e=>{
+        emiSelect.innerHTML += `<option value="${e.name}">${e.name}</option>`;
+    });
+}
+
+// ---------------- Add Expense ----------------
+document.getElementById('expenseForm').addEventListener('submit', e=>{
+    e.preventDefault();
+    const type = document.getElementById('expenseType').value;
+    const amount = parseFloat(document.getElementById('amount').value);
+    const itemName = document.getElementById('itemName').value.trim();
+    let emiType = null, paidAmount=null, remainingAmount=null;
+
+    if(type==='EMI'){
+        emiType = document.getElementById('emiType').value;
+        const emi = expensesData.emiTypes.find(e=>e.name===emiType);
+        paidAmount = emi.paidAmount;
+        remainingAmount = emi.totalAmount - emi.paidAmount;
+    }
+
+    expensesData.expenses.push({
+        type, itemName, amount, emiType, paidAmount, remainingAmount, date:new Date()
+    });
+    displayExpenses();
+    saveData();
+    document.getElementById('expenseForm').reset();
+    document.getElementById('emiDiv').style.display='none';
+});
+
+// ---------------- Add/Update EMI ----------------
+function addNewEMI(){
+    const name = document.getElementById('emiType').value.trim();
+    const total = parseFloat(document.getElementById('emiTotal').value);
+    const paid = parseFloat(document.getElementById('emiPaid').value);
+    if(!name || isNaN(total) || isNaN(paid)) return alert('Fill EMI details');
+
+    const existing = expensesData.emiTypes.find(e=>e.name===name);
+    if(existing){
+        existing.totalAmount = total;
+        existing.paidAmount = paid;
+    }else{
+        expensesData.emiTypes.push({name, totalAmount:total, paidAmount:paid});
+    }
+    populateEMITypes();
+    saveData();
+    alert('EMI configured!');
+}
+
+// ---------------- Display Tables ----------------
+function displayExpenses(){
+    const emiContainer = document.getElementById('emiContainer');
+    const otherContainer = document.getElementById('otherContainer');
+    let total =0;
+    const emiExpenses = expensesData.expenses.filter(e=>e.type==='EMI');
+    const otherExpenses = expensesData.expenses.filter(e=>e.type!=='EMI');
+
+    // EMI table
+    if(emiExpenses.length===0){ emiContainer.innerHTML="<p>No EMI expenses yet.</p>"; }
+    else{
+        let html='<table><tr><th>EMI Type</th><th>Item</th><th>Amount</th><th>Paid</th><th>Remaining</th><th>Date</th></tr>';
+        emiExpenses.forEach(e=>{
+            html += `<tr><td>${e.emiType}</td><td>${e.itemName || '-'}</td><td>${e.amount}</td><td>${e.paidAmount}</td><td>${e.remainingAmount}</td><td>${new Date(e.date).toLocaleString()}</td></tr>`;
+            total+=e.amount;
+        });
+        html+='</table>'; emiContainer.innerHTML=html;
+    }
+
+    // Other table
+    if(otherExpenses.length===0){ otherContainer.innerHTML="<p>No other expenses yet.</p>"; }
+    else{
+        let html='<table><tr><th>Type</th><th>Item</th><th>Amount</th><th>Date</th></tr>';
+        otherExpenses.forEach(e=>{
+            html += `<tr><td>${e.type}</td><td>${e.itemName || '-'}</td><td>${e.amount}</td><td>${new Date(e.date).toLocaleString()}</td></tr>`;
+            total+=e.amount;
+        });
+        html+='</table>'; otherContainer.innerHTML=html;
+    }
+
+    document.getElementById('totalSpent').textContent = '💰 Total Spent: '+total;
+}
+
+// ---------------- Save/Load Data Locally ----------------
+function saveData(){
+    localStorage.setItem('expensesData', JSON.stringify(expensesData));
+}
+
+// ---------------- Generate Excel ----------------
+function generateReport(){
+    if(expensesData.expenses.length===0) return alert('No expenses to report');
+    const ws = XLSX.utils.json_to_sheet(expensesData.expenses);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Expenses");
+    XLSX.writeFile(wb,"Expenses_Report.xlsx");
+}
+
+// ---------------- Google Drive Save ----------------
+function saveToDrive(){
+    if(!accessToken) return alert('Sign in first!');
+    const fileMetadata = {name:'ExpenseTrackerData.json', mimeType:'application/json'};
+    const blob = new Blob([JSON.stringify(expensesData)], {type:'application/json'});
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(fileMetadata)], {type:'application/json'}));
+    form.append('file', blob);
+
+    fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
+        method:'POST',
+        headers: {'Authorization':'Bearer '+accessToken},
+        body: form
+    }).then(res=>res.json()).then(data=>alert('Saved to Drive!')).catch(e=>console.error(e));
+}
+
+// ---------------- Load From Drive ----------------
+function loadFromDrive(){
+    if(!accessToken) return;
+    // Optional: implement search and fetch the JSON file from Drive
+    const localData = localStorage.getItem('expensesData');
+    if(localData) expensesData = JSON.parse(localData);
+    displayExpenses();
+}
+
+// ---------------- Initialize ----------------
+document.addEventListener('DOMContentLoaded', ()=>{
+    const localData = localStorage.getItem('expensesData');
+    if(localData) { expensesData = JSON.parse(localData); displayExpenses(); }
+});
+</script>
 
 </body>
 </html>
