@@ -22,7 +22,6 @@ th { background:#2b6cb0; color:white; }
 <div id="signinDiv">
   <div id="g_id_onload"
        data-client_id="257055116652-3fidtne77h0ga05efu2e85q1r1pn1qoa.apps.googleusercontent.com"
-       data-login_uri=""
        data-ux_mode="popup"
        data-callback="handleCredentialResponse"
        data-auto_prompt="false">
@@ -68,26 +67,17 @@ th { background:#2b6cb0; color:white; }
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
 <script>
 let accessToken = null;
 let expensesData = { expenses: [], emiTypes: [] };
 
 // ---------------- Google Identity callback ----------------
 function handleCredentialResponse(response){
-  // Decode JWT to get user's info
-  const data = parseJwt(response.credential);
-  console.log("Signed in as:", data.email);
-  // Use OAuth 2.0 token for Drive API
-  accessToken = response.credential;
+  accessToken = response.credential; // JWT token
   document.getElementById('signinDiv').style.display='none';
   document.getElementById('dashboard').style.display='block';
   loadFromDrive();
-}
-
-function parseJwt(token) {
-  const base64Url = token.split('.')[1];
-  const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
-  return JSON.parse(decodeURIComponent(atob(base64).split('').map(c=> '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join('')));
 }
 
 // ---------------- Expense Form ----------------
@@ -125,7 +115,13 @@ document.getElementById('expenseForm').addEventListener('submit', e=>{
     }
   }
 
-  expensesData.expenses.push({type,itemName,amount,emiType,date:new Date(),paidAmount:type==='EMI'?amount:0,remainingAmount:type==='EMI'?amount:0});
+  expensesData.expenses.push({
+    type, itemName, amount,
+    emiType,
+    date: new Date(),
+    paidAmount: type==='EMI'?amount:0,
+    remainingAmount: type==='EMI'?amount:0
+  });
   saveData();
   displayExpenses();
   document.getElementById('expenseForm').reset();
@@ -180,19 +176,17 @@ function generateReport(){
 // ---------------- Google Drive ----------------
 function loadFromDrive(){
   if(!accessToken) return;
-  gapi.load('client', ()=>{
-    gapi.client.init({apiKey:'AIzaSyBgaRAcjeS2xwuM-AZve28NHaOC_Iy_tXo', discoveryDocs:["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"]})
-    .then(()=> gapi.client.request({path:'/drive/v3/files', method:'GET', params:{q:'name="ExpenseTrackerData.json"', fields:'files(id,name)'}}))
-    .then(res=>{
-      if(res.result.files.length>0){
-        const fileId=res.result.files[0].id;
-        gapi.client.request({path:'/drive/v3/files/'+fileId, method:'GET', params:{alt:'media'}})
-        .then(r=>{
-          expensesData=r.result;
-          saveData(); displayExpenses(); populateEMItypes();
-        });
-      }
-    });
+  fetch('https://www.googleapis.com/drive/v3/files?q=name="ExpenseTrackerData.json"&fields=files(id,name)', {
+    headers: { Authorization: 'Bearer ' + accessToken }
+  }).then(r=>r.json()).then(res=>{
+    if(res.files && res.files.length>0){
+      const fileId = res.files[0].id;
+      fetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, {
+        headers: { Authorization: 'Bearer ' + accessToken }
+      }).then(r=>r.json()).then(data=>{
+        expensesData = data; saveData(); displayExpenses(); populateEMItypes();
+      });
+    }
   });
 }
 
