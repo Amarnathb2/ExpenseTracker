@@ -1,170 +1,27 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Expense Tracker</title>
-<style>
-body { font-family: Arial; margin:20px; text-align:center; }
-form, table { max-width:600px; margin: 0 auto 20px; }
-input, select, button { padding:6px; margin:4px; border-radius:5px; border:1px solid #ccc; }
-button { background:#2b6cb0; color:white; cursor:pointer; }
-button:hover { background:#2c5282; }
-table { width:100%; border-collapse: collapse; margin-top:20px; }
-th, td { border:1px solid #ccc; padding:6px; text-align:center; }
-th { background:#2b6cb0; color:white; }
-</style>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
-<script src="https://apis.google.com/js/api.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Expense Tracker</title>
+  <style>
+    body { font-family: Arial; margin:20px; text-align:center; }
+    h1 { color:#2b6cb0; }
+    .tiles { display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; margin-top:30px; }
+    .tile { padding:20px; background:#edf2f7; border-radius:12px; cursor:pointer; transition:0.3s; }
+    .tile:hover { background:#cbd5e0; }
+  </style>
 </head>
 <body>
-
-<h1>Expense Tracker</h1>
-
-<div id="g_id_onload"
-     data-client_id="257055116652-3fidtne77h0ga05efu2e85q1r1pn1qoa.apps.googleusercontent.com"
-     data-callback="handleCredentialResponse"
-     data-ux_mode="popup"
-     data-scope="https://www.googleapis.com/auth/drive.file"
-     data-auto_prompt="false">
+  <h1>Expense Tracker</h1>
+  <div class="tiles">
+  <div class="tile" onclick="window.location='add-expense.html'">➕ Add Expense</div>
+  <div class="tile" onclick="window.location='view-expense.html'">📊 View Expenses</div>
+  <div class="tile" onclick="displayPendingEMI('pendingEMI')">💰 Pending EMI</div>
 </div>
-<div id="signinButton"></div>
+<div id="pendingEMI"></div>
 
-<div id="tracker" style="display:none;">
-  <h2>Add Expense</h2>
-  <form id="expenseForm">
-    <input type="text" id="item" placeholder="Item Name" required>
-    <select id="expenseType">
-      <option value="Grocery">Grocery</option>
-      <option value="Food">Food</option>
-      <option value="Travel">Travel</option>
-      <option value="EMI">EMI</option>
-      <option value="Other">Other</option>
-    </select>
+<script src="app.js"></script>
 
-    <div id="emiDiv" style="display:none;">
-      <input type="text" id="emiType" placeholder="EMI Type">
-      <input type="number" id="emiTotal" placeholder="Total Amount">
-      <input type="number" id="emiPaid" placeholder="Already Paid">
-    </div>
-
-    <input type="number" id="amount" placeholder="Amount" required>
-    <button type="submit">Add Expense</button>
-  </form>
-
-  <h2>Other Expenses</h2>
-  <div id="otherTable"></div>
-
-  <h2>EMI Expenses</h2>
-  <div id="emiTable"></div>
-
-  <h3>Total Spent: <span id="totalSpent">0</span></h3>
-  <button onclick="generateExcel()">Generate Excel Report</button>
-</div>
-
-<script>
-let accessToken = '';
-let expensesData = { expenses: [], emiTypes: [] };
-
-function handleCredentialResponse(response){
-    accessToken = response.credential; // token for Drive
-    document.getElementById('tracker').style.display='block';
-    document.getElementById('signinButton').style.display='none';
-    gapi.load('client', initClient);
-}
-
-async function initClient(){
-    await gapi.client.init({ apiKey: 'AIzaSyBgaRAcjeS2xwuM-AZve28NHaOC_Iy_tXo', discoveryDocs: ["https://www.googleapis.com/discovery/v1/apis/drive/v3/rest"] });
-    gapi.client.setToken({ access_token: accessToken });
-    await loadFromDrive();
-}
-
-// ----------- Drive Storage ------------
-async function loadFromDrive(){
-    try{
-        const res = await gapi.client.drive.files.list({
-            q: 'name="ExpenseTrackerData.json"',
-            fields: 'files(id,name)'
-        });
-        if(res.result.files.length){
-            const fileId = res.result.files[0].id;
-            const contentRes = await gapi.client.drive.files.get({ fileId: fileId, alt: 'media' });
-            expensesData = contentRes.result;
-        } else {
-            await saveToDrive(); // create new file
-        }
-        displayExpenses();
-    } catch(err){ console.error(err); }
-}
-
-async function saveToDrive(){
-    const metadata = { name: 'ExpenseTrackerData.json', mimeType: 'application/json' };
-    const blob = new Blob([JSON.stringify(expensesData)], { type: 'application/json' });
-    const form = new FormData();
-    form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-    form.append('file', blob);
-
-    await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-        method: 'POST',
-        headers: { Authorization: 'Bearer ' + accessToken },
-        body: form
-    });
-}
-
-// ----------- Add Expense ------------
-const expenseType = document.getElementById('expenseType');
-const emiDiv = document.getElementById('emiDiv');
-expenseType.addEventListener('change', e=>{ emiDiv.style.display = e.target.value==='EMI' ? 'block':'none'; });
-
-document.getElementById('expenseForm').addEventListener('submit', async e=>{
-    e.preventDefault();
-    const type = expenseType.value;
-    const item = document.getElementById('item').value;
-    const amount = parseFloat(document.getElementById('amount').value);
-    let emiType = null;
-    if(type==='EMI'){
-        emiType = document.getElementById('emiType').value;
-        const total = parseFloat(document.getElementById('emiTotal').value);
-        const paid = parseFloat(document.getElementById('emiPaid').value);
-        let emi = expensesData.emiTypes.find(e=>e.name===emiType);
-        if(!emi){
-            emi = { name: emiType, totalAmount: total, paidAmount: paid };
-            expensesData.emiTypes.push(emi);
-        }
-    }
-    expensesData.expenses.push({ type, item, amount, emiType, date: new Date().toISOString() });
-    await saveToDrive();
-    displayExpenses();
-});
-
-// ----------- Display Tables ------------
-function displayExpenses(){
-    const other = expensesData.expenses.filter(e=>e.type!=='EMI');
-    const emi = expensesData.expenses.filter(e=>e.type==='EMI');
-    let total = 0;
-
-    // Other expenses
-    let html = '<table><tr><th>Item</th><th>Type</th><th>Amount</th><th>Date</th></tr>';
-    other.forEach(e=>{ html += `<tr><td>${e.item}</td><td>${e.type}</td><td>${e.amount}</td><td>${new Date(e.date).toLocaleDateString()}</td></tr>`; total+=e.amount; });
-    html+='</table>'; document.getElementById('otherTable').innerHTML=html;
-
-    // EMI expenses
-    html = '<table><tr><th>Item</th><th>EMI Type</th><th>Amount</th><th>Date</th></tr>';
-    emi.forEach(e=>{ html += `<tr><td>${e.item}</td><td>${e.emiType}</td><td>${e.amount}</td><td>${new Date(e.date).toLocaleDateString()}</td></tr>`; total+=e.amount; });
-    html+='</table>'; document.getElementById('emiTable').innerHTML=html;
-
-    document.getElementById('totalSpent').innerText = total;
-}
-
-// ----------- Excel Report ------------
-function generateExcel(){
-    let csv = 'Item,Type,EMI Type,Amount,Date\n';
-    expensesData.expenses.forEach(e=>{ csv+=`${e.item},${e.type},${e.emiType||''},${e.amount},${new Date(e.date).toLocaleDateString()}\n`; });
-    const a = document.createElement('a');
-    a.href = 'data:text/csv;charset=utf-8,' + encodeURIComponent(csv);
-    a.download = 'ExpenseReport.csv';
-    a.click();
-}
-</script>
 </body>
 </html>
