@@ -21,7 +21,37 @@
 </div>
 <div id="pendingEMI"></div>
 
+<form class="form-container" id="contactForm"
+      action="https://script.google.com/macros/s/AKfycbymTMTRIlJACPGEriyTgHSdHQ3-FRUSPB3mrtRsIgvXSMJnHUOV2nqTL6UIhcztYvwM/exec"
+      method="POST" target="hidden_iframe">
+  <h2>Contact Form</h2>
+  <input id="email" name="Email" type="email" placeholder="Email" required>
+  <input id="name" name="Name" type="text" placeholder="Name" required>
+  <button type="submit">Send</button>
+</form>
+
+<iframe name="hidden_iframe" style="display:none;"></iframe>
+<div id="message"></div>
+
+<script>
+  const message = document.getElementById('message');
+  const form = document.getElementById('contactForm');
+
+  window.addEventListener('message', function(event) {
+    const data = event.data;
+
+    if(data.result === 'success') {
+      message.textContent = `Form submitted successfully! Row: ${data.row}`;
+      message.className = 'success';
+      form.reset();
+    } else if(data.result === 'error') {
+      message.textContent = `Error submitting form: ${data.error}`;
+      message.className = 'error';
+    }
+  });
+</script>
 <script src="app.js"></script>
 
 </body>
 </html>
+
