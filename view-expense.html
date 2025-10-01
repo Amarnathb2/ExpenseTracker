@@ -39,6 +39,18 @@ h3 { margin-top:40px; }
   </table>
 
   <script>
+      const scriptURL = 'https://corsproxy.io/?https://script.google.com/macros/s/AKfycbymTMTRIlJACPGEriyTgHSdHQ3-FRUSPB3mrtRsIgvXSMJnHUOV2nqTL6UIhcztYvwM/exec';
+
+fetch(scriptURL)
+  .then(response => response.json())
+  .then(data => {
+    console.log(data);
+    // render your table here
+  })
+  .catch(error => {
+    console.error('Error fetching data:', error);
+  });
+
     const scriptURL = 'https://script.google.com/macros/s/AKfycbymTMTRIlJACPGEriyTgHSdHQ3-FRUSPB3mrtRsIgvXSMJnHUOV2nqTL6UIhcztYvwM/exec'; // Replace with your deployed Apps Script URL
 
     fetch(scriptURL)
@@ -200,5 +212,6 @@ function generateReport() {
 </script>
 </body>
 </html>
+
 
 
