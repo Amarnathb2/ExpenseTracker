@@ -30,21 +30,54 @@ h3 { margin-top:40px; }
 <button onclick="generateReport()">📄 Generate Report</button>
 
     
-    <script>
-  fetch('https://script.google.com/macros/s/AKfycbymTMTRIlJACPGEriyTgHSdHQ3-FRUSPB3mrtRsIgvXSMJnHUOV2nqTL6UIhcztYvwM/exec')
-    .then(response => response.json())
-    .then(data => {
-      if (data.result === 'success') {
-        const expenses = data.data;
-        console.log(expenses); // You can render this in a table or list
-      } else {
-        alert('Failed to load data');
-      }
-    })
-    .catch(error => {
-      console.error('Error fetching data:', error);
-    });
-</script>
+     <h2>Expense Records</h2>
+  <table border="1" id="expenseTable">
+    <thead>
+      <tr id="tableHeader"></tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
+
+  <script>
+    const scriptURL = 'https://script.google.com/macros/s/AKfycbymTMTRIlJACPGEriyTgHSdHQ3-FRUSPB3mrtRsIgvXSMJnHUOV2nqTL6UIhcztYvwM/exec'; // Replace with your deployed Apps Script URL
+
+    fetch(scriptURL)
+      .then(response => response.json())
+      .then(data => {
+        if (data.result === 'success') {
+          const records = data.data;
+          const tableHeader = document.getElementById('tableHeader');
+          const tableBody = document.getElementById('tableBody');
+
+          // Create table headers
+          if (records.length > 0) {
+            Object.keys(records[0]).forEach(key => {
+              const th = document.createElement('th');
+              th.textContent = key;
+              tableHeader.appendChild(th);
+            });
+
+            // Create table rows
+            records.forEach(record => {
+              const tr = document.createElement('tr');
+              Object.values(record).forEach(value => {
+                const td = document.createElement('td');
+                td.textContent = value;
+                tr.appendChild(td);
+              });
+              tableBody.appendChild(tr);
+            });
+          } else {
+            tableBody.innerHTML = '<tr><td colspan="100%">No data found</td></tr>';
+          }
+        } else {
+          alert('Failed to retrieve data');
+        }
+      })
+      .catch(error => {
+        console.error('Error fetching data:', error);
+      });
+  </script>
 
 <script src="app.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
@@ -167,4 +200,5 @@ function generateReport() {
 </script>
 </body>
 </html>
+
 
