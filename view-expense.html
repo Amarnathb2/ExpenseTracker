@@ -29,6 +29,23 @@ h3 { margin-top:40px; }
 
 <button onclick="generateReport()">📄 Generate Report</button>
 
+    
+    <script>
+  fetch('https://script.google.com/macros/s/AKfycbymTMTRIlJACPGEriyTgHSdHQ3-FRUSPB3mrtRsIgvXSMJnHUOV2nqTL6UIhcztYvwM/exec')
+    .then(response => response.json())
+    .then(data => {
+      if (data.result === 'success') {
+        const expenses = data.data;
+        console.log(expenses); // You can render this in a table or list
+      } else {
+        alert('Failed to load data');
+      }
+    })
+    .catch(error => {
+      console.error('Error fetching data:', error);
+    });
+</script>
+
 <script src="app.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 <script>
@@ -150,3 +167,4 @@ function generateReport() {
 </script>
 </body>
 </html>
+
