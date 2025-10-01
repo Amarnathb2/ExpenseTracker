@@ -42,13 +42,15 @@
     .then(response => response.json())
     .then(data => {
       if (data.result === 'success') {
+        // Redirect to your GitHub page
         window.location.href = 'https://amarnathb2.github.io/ExpenseTracker/view-expense.html';
       } else {
-        alert('Something went wrong!');
+        alert('Submission failed: ' + JSON.stringify(data.error));
       }
     })
     .catch(error => {
       console.error('Error:', error);
+      alert('Something went wrong!');
     });
   }
 </script>
@@ -56,5 +58,6 @@
 
 </body>
 </html>
+
 
 
